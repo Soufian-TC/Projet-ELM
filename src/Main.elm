@@ -1,5 +1,5 @@
 module Main exposing (..)
-
+import Drawing exposing (display, Program)
 import Browser
 import Html exposing (Html, div, input, text, button)
 import Html.Attributes exposing (..)
@@ -15,6 +15,7 @@ type alias Model =
     { content : String
     , instructions : List (String, Int) -- Liste des instructions avec leur répétition
     , showDrawing : Bool
+    ,errorMessage : Maybe String
     }
 
 
@@ -23,6 +24,7 @@ init =
     { content = ""
     , instructions = []
     , showDrawing = False
+    , errorMessage = Nothing
     }
 
 
@@ -43,14 +45,15 @@ update msg model =
             let
                 parsedInstructions = parseInstructions model.content
             in
-            { model | instructions = parsedInstructions }
-
+                case parsedInstructions of
+                Just instr -> { model | instructions = instr, errorMessage = Nothing }
+                Nothing -> { model | errorMessage = Just "Erreur : Vérifiez votre syntaxe !" }
         ToggleDrawing ->
             { model | showDrawing = not model.showDrawing }
 
 
 -- PARSER
-parseInstructions : String -> List (String, Int)
+parseInstructions : String -> Maybe (List (String, Int))
 parseInstructions input =
     let
         -- Fonction pour couper la chaîne d'entrée en tokens
@@ -59,7 +62,7 @@ parseInstructions input =
             String.split " " str -- On sépare les mots par des espaces
 
         -- Fonction pour parser une instruction imbriquée
-        parseInstruction : List String -> (List (String, Int), List String)
+        parseInstruction : List String -> (List (String, Int), List String)  -- 🔴 Déplacement avant son utilisation
         parseInstruction tokens =
             case tokens of
                 -- Cas de crochet ouvrant, début d'un bloc
@@ -143,19 +146,20 @@ parseInstructions input =
                     (innerInstructions, remainingTokens)
 
     in
-    tokenize input
-        |> parseInstruction
-        |> Tuple.first
-
+    -- Retourne `Nothing` si la fonction `parseInstruction` échoue à parser tout le contenu
+    case tokenize input |> parseInstruction of
+        ([], []) -> Nothing  -- Si aucun résultat, c'est une erreur
+        (instructions, []) -> Just instructions  -- Si succès, retourne les instructions
+        _ -> Nothing  -- Si la structure des tokens ne correspond pas à ce qu'on attend
 -- VIEW
 view : Model -> Html Msg
 view model =
     div []
         [ div [] -- Premier div
-            [ text "Type in your code below:" ]
+            [ text "⚠️ Veuillez respecter les espaces entre les éléments !" ]
         , div [] -- Deuxième div avec champ de saisie plus large
             [ input
-                [ placeholder "Example: [Forward 100, Repeat 4 [Forward 50, Left 90], Forward 100]"
+                [ placeholder "Example: [ Forward 100 , Repeat 4 [ Forward 50 , Left 90 ] , Forward 100 ]"
                 , value model.content
                 , onInput UpdateInput
                 , style "width" "100%"
@@ -166,15 +170,20 @@ view model =
             [ button [ onClick ParseInstructions ] [ text "Parse Instructions" ]
             , button [ onClick ToggleDrawing ] [ text "Toggle Drawing" ]
             ]
+        , case model.errorMessage of
+            Just errMsg -> div [ style "color" "red" ] [ text errMsg ]  -- 🔴 Affichage de l'erreur en rouge
+            Nothing -> text ""
+
         , if model.showDrawing then
             div
                 [ style "border" "1px solid black"
-                , style "width" "400px"
-                , style "height" "400px"
+                , style "width" "500px"
+                , style "height" "500px"
                 ]
-                [ text "Drawing area (not implemented)" ]
+                [ display model.instructions ]
           else
             text ""
+
         , div []
             [ text "Parsed Instructions: "
             , text (String.join ", " (List.map (\(cmd, count) -> cmd ++ " " ++ String.fromInt count) model.instructions))
